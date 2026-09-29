@@ -10,6 +10,7 @@ displayName="${mod_name}"
 authors="${mod_authors}"
 description='''${mod_description}'''
 displayURL="https://github.com/bh679/lostcityterrainfit-mc"
+logoFile="lostcityterrainfit_logo.png"
 
 # Big Lost City — required, MINIMUM version. All Rights Reserved, never bundled. Server-side world
 # generation; BOTH because single-player runs it on the client. AFTER so its structures and
