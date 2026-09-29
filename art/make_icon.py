@@ -10,6 +10,7 @@ import zlib
 
 N = 32
 SCALE = 16
+CORNER_RADIUS = 72  # px at 512: rounded corners, transparent outside, anti-aliased edge
 
 SKY_TOP = (92, 150, 222)
 SKY_LOW = (176, 214, 240)
@@ -99,6 +100,21 @@ def draw():
     return img
 
 
+def corner_alpha(x, y, size, radius):
+    """Coverage (0-255) of pixel (x, y) by a rounded square, sampled 4x4 for a smooth edge."""
+    cx = min(max(x + 0.5, radius), size - radius)
+    cy = min(max(y + 0.5, radius), size - radius)
+    if abs(x + 0.5 - cx) < 1e-9 and abs(y + 0.5 - cy) < 1e-9:
+        return 255
+    hits = 0
+    for i in range(4):
+        for j in range(4):
+            px, py = x + (i + 0.5) / 4, y + (j + 0.5) / 4
+            if (px - cx) ** 2 + (py - cy) ** 2 <= radius * radius:
+                hits += 1
+    return round(255 * hits / 16)
+
+
 def write_png(path, img):
     size = N * SCALE
     raw = bytearray()
@@ -107,7 +123,7 @@ def write_png(path, img):
         row = img[y // SCALE]
         for x in range(size):
             r, g, b = row[x // SCALE]
-            raw += bytes((r, g, b, 255))
+            raw += bytes((r, g, b, corner_alpha(x, y, size, CORNER_RADIUS)))
 
     def chunk(tag, data):
         return struct.pack('>I', len(data)) + tag + data + struct.pack('>I', zlib.crc32(tag + data) & 0xFFFFFFFF)
