@@ -40,7 +40,7 @@ Changes only apply to newly generated chunks. Terrain you have already explored 
 | `allBiomeBuildings.chance` | `1.0` | Share of the copies' placement attempts that are kept, from `0.0` to `1.0`. Lower it to thin them out. |
 
 Datapack overrides:
-- **Spacing:** `data/lostcityterrainfit/worldgen/structure_set/all_biome_buildings.json` (`random_spread`, spacing 40, separation 16).
+- **Spacing:** `data/lostcityterrainfit/worldgen/structure_set/all_biome_buildings.json` (`random_spread`, spacing 20, separation 8 — one attempt per 320×320 blocks).
 - **Biomes:** tag `#lostcityterrainfit:all_biome_buildings` (defaults to `#minecraft:is_overworld`).
 
 ## Modpack authors
