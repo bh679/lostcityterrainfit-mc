@@ -30,7 +30,9 @@ full human oversight at each stage.
 
 - `LostCityGroundProcessor` is attached to every `big_lost_city:*` template by `SinglePoolElementMixin`.
   The template's natural pad yields to the world's ground, template air yields to world water and to
-  contiguous hillside, and footings go under hanging pads.
+  contiguous hillside, and footings go under hanging pads. Where another Lost City piece's box reaches
+  the same position (`LostCityOverlap`, via `LostCitySeating#isLostCity`), template air also yields to
+  any solid block already there, so overlapping buildings meld instead of carving each other.
 - `StructureTerrainAdaptationMixin` answers `NONE` for any jigsaw whose start pool is in the
   `big_lost_city` namespace.
 - `BeardifierMixin` adds `LostCitySeating#fillContribution` (vanilla's beard, fill half only).
