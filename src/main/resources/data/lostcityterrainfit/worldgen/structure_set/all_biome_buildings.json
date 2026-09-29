@@ -1,0 +1,68 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "big_lost_city"
+    }
+  ],
+  "structures": [
+    {
+      "structure": "lostcityterrainfit:all_biome/blackskyscraper",
+      "weight": 6
+    },
+    {
+      "structure": "lostcityterrainfit:all_biome/redskyscraper",
+      "weight": 6
+    },
+    {
+      "structure": "lostcityterrainfit:all_biome/ruindedredskyscraper",
+      "weight": 6
+    },
+    {
+      "structure": "lostcityterrainfit:all_biome/ruinedblackskyscraper",
+      "weight": 6
+    },
+    {
+      "structure": "lostcityterrainfit:all_biome/ruinedskyscraper",
+      "weight": 6
+    },
+    {
+      "structure": "lostcityterrainfit:all_biome/tallskyscraper",
+      "weight": 5
+    },
+    {
+      "structure": "lostcityterrainfit:all_biome/powerplant",
+      "weight": 3
+    },
+    {
+      "structure": "lostcityterrainfit:all_biome/house_1",
+      "weight": 5
+    },
+    {
+      "structure": "lostcityterrainfit:all_biome/house_2",
+      "weight": 5
+    },
+    {
+      "structure": "lostcityterrainfit:all_biome/house_3",
+      "weight": 5
+    },
+    {
+      "structure": "lostcityterrainfit:all_biome/store_1",
+      "weight": 5
+    },
+    {
+      "structure": "lostcityterrainfit:all_biome/warehouse",
+      "weight": 5
+    },
+    {
+      "structure": "lostcityterrainfit:all_biome/ferriswheel",
+      "weight": 3
+    }
+  ],
+  "placement": {
+    "type": "minecraft:random_spread",
+    "spacing": 40,
+    "separation": 16,
+    "salt": 734120957
+  }
+}

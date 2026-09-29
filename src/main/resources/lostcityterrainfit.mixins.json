@@ -1,0 +1,19 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "games.brennan.lostcityterrainfit.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "_comment": "No refmap: NeoForge 1.21.1 uses Mojang mappings in dev and production alike.",
+  "mixins": [
+    "JigsawStructureAccessor",
+    "SinglePoolElementMixin",
+    "StructureTerrainAdaptationMixin",
+    "BeardifierMixin",
+    "StructureSeatMixin"
+  ],
+  "client": [],
+  "server": [],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
