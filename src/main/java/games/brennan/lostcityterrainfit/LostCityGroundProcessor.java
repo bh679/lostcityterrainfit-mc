@@ -60,10 +60,12 @@ import java.util.function.IntFunction;
  * and buries them (walls and floors are still placed inside it) — and where the pad hangs over lower ground
  * on the downhill side, {@code BeardifierMixin} draws the terrain up to it ({@link LostCitySeating}) and
  * {@link #finalizeProcessing} props up what that skirt leaves hanging with a footing column: dirt under
- * natural pad blocks, stone under roads and plazas, down to the ground or {@link #FOOTING_MAX_DEPTH}.</p>
+ * natural pad blocks, stone under roads and plazas, always down to the ground, so no pad stands over air or
+ * water. Footings hang from the pad, or a padless template's lowest layer; a ruin's overhang above that stays an overhang.</p>
  *
  * <p>Attached at runtime by {@code SinglePoolElementMixin} to every pool element that places a
- * {@code big_lost_city} template — Big Lost City's own pools and every copy that points at them (this mod's all-biome buildings, other mods' copies) alike. Runtime-only, never
+ * {@code big_lost_city} template — Big Lost City's own pools and every copy that points at them (this mod's all-biome buildings, other mods' copies) alike — or
+ * one of Dungeon Train's own Lost City buildings ({@link #appliesTo}). Runtime-only, never
  * serialised, so {@link #getType()} is a unit codec. Reads the world only inside the placement box:
  * {@code processBlockInfos} runs processors before the chunk-box filter, and a read outside the region
  * would throw.</p>
@@ -74,11 +76,13 @@ public final class LostCityGroundProcessor extends StructureProcessor {
 
     private static final StructureProcessorType<LostCityGroundProcessor> TYPE = () -> MapCodec.unit(INSTANCE);
 
-    /** Deepest footing placed under a pad hanging over lower ground. */
-    static final int FOOTING_MAX_DEPTH = 24;
-
-    /** Namespace of the templates this processor is attached to. */
+    /** Namespace of the Big Lost City mod's templates and pools. */
     private static final String TEMPLATE_NAMESPACE = "big_lost_city";
+
+    /** Dungeon Train's own Lost City buildings: {@code dungeontrain:lost_city/<name>} and its player-building slot. */
+    private static final String DUNGEON_TRAIN_NAMESPACE = "dungeontrain";
+    private static final String DUNGEON_TRAIN_PREFIX = "lost_city/";
+    private static final String DUNGEON_TRAIN_SLOT = "building_slot";
 
     /** Pad-layer blocks that read as natural ground rather than as part of the building. */
     static final Set<Block> BASE = Set.of(
@@ -89,9 +93,15 @@ public final class LostCityGroundProcessor extends StructureProcessor {
 
     private LostCityGroundProcessor() {}
 
-    /** Whether {@code template} is one of the Big Lost City mod's, so its pool element gets this processor. */
+    /**
+     * Whether {@code template} (a template or start pool id) is a Lost City building: one of the Big Lost City
+     * mod's, or one of Dungeon Train's own, which follow the same y=0 pad convention.
+     */
     public static boolean appliesTo(ResourceLocation template) {
-        return template != null && TEMPLATE_NAMESPACE.equals(template.getNamespace());
+        if (template == null) return false;
+        if (TEMPLATE_NAMESPACE.equals(template.getNamespace())) return true;
+        return DUNGEON_TRAIN_NAMESPACE.equals(template.getNamespace())
+                && (template.getPath().startsWith(DUNGEON_TRAIN_PREFIX) || DUNGEON_TRAIN_SLOT.equals(template.getPath()));
     }
 
     /** A pad block the world may replace. */
@@ -138,14 +148,14 @@ public final class LostCityGroundProcessor extends StructureProcessor {
      * Whether the template block at local height {@code localY} yields to the world, given the world column
      * from the pad level ({@code world.apply(0)}) up to that height ({@code world.apply(localY)}).
      *
-     * <p>Pad base yields when the world already has ground there. Air and plant cover yield to the world's
+     * <p>Pad base yields when the world already has ground there, and pad air to the world's water. Air and plant cover yield to the world's
      * water; where the position is {@code overlapped} by another Lost City building, to any solid block
      * that building left; and otherwise to ground while every world block from the pad up to them is
      * ground — no shelf is kept over a gap.</p>
      */
     static boolean yields(BlockState template, int localY, IntFunction<BlockState> world, boolean overlapped) {
         if (localY == 0) {
-            return isBase(template) && isNaturalGround(world.apply(0));
+            return isBase(template) ? isNaturalGround(world.apply(0)) : template.isAir() && isWater(world.apply(0));
         }
         if (!template.isAir() && !isCover(template)) return false;
         BlockState here = world.apply(localY);
@@ -166,7 +176,7 @@ public final class LostCityGroundProcessor extends StructureProcessor {
         if (target == null) return null;
         int localY = original.pos().getY();
         BlockState state = target.state();
-        if (localY == 0 ? !isBase(state) : !state.isAir() && !isCover(state)) return target;
+        if (localY == 0 ? !isBase(state) && !state.isAir() : !state.isAir() && !isCover(state)) return target;
         BoundingBox box = settings.getBoundingBox();
         BlockPos at = target.pos();
         if (box != null && !box.isInside(at)) return target;   // never read outside the region
@@ -185,15 +195,50 @@ public final class LostCityGroundProcessor extends StructureProcessor {
     }
 
     /**
-     * How many footing blocks go under a pad block, given the world column below it ({@code below.apply(1)} is
-     * one block under the pad): down to the first natural ground, at most {@link #FOOTING_MAX_DEPTH}; none
-     * when ground is directly underneath or the pad cell is air.
+     * How many footing blocks go under a block, given the world column below it ({@code below.apply(1)} is one
+     * block under it): down to the first natural ground, or {@code room} blocks where there is none. None when
+     * ground is directly underneath or the cell is air.
      */
-    static int footingDepth(BlockState pad, IntFunction<BlockState> below) {
-        if (pad.isAir()) return 0;
+    static int footingDepth(BlockState block, int room, IntFunction<BlockState> below) {
+        if (block.isAir()) return 0;
         int depth = 0;
-        while (depth < FOOTING_MAX_DEPTH && !isNaturalGround(below.apply(depth + 1))) depth++;
+        while (depth < room && !isNaturalGround(below.apply(depth + 1))) depth++;
         return depth;
+    }
+
+    /**
+     * The layer a building stands on: the pad layer ({@code padY}) wherever it holds anything, else, for a
+     * template without a pad, its lowest layer with a solid block. Read over the whole template, so every chunk
+     * call agrees. {@code padY} when nothing is solid.
+     */
+    static int bottomLayer(List<StructureTemplate.StructureBlockInfo> placed, int padY) {
+        int lowest = Integer.MAX_VALUE;
+        for (StructureTemplate.StructureBlockInfo info : placed) {
+            BlockState state = info.state();
+            if (state.isAir()) continue;
+            int y = info.pos().getY();
+            if (y == padY) return padY;
+            if (!isCover(state)) lowest = Math.min(lowest, y);
+        }
+        return lowest == Integer.MAX_VALUE ? padY : lowest;
+    }
+
+    /**
+     * The blocks footings hang from: the bottom layer's, inside {@code box} when there is one. Only that layer,
+     * so a ruin's overhang above it never grows a wall down to the ground.
+     */
+    static List<StructureTemplate.StructureBlockInfo> footingTops(List<StructureTemplate.StructureBlockInfo> placed,
+                                                                  int padY, @Nullable BoundingBox box) {
+        int bottom = bottomLayer(placed, padY);
+        List<StructureTemplate.StructureBlockInfo> tops = new ArrayList<>();
+        for (StructureTemplate.StructureBlockInfo info : placed) {
+            BlockPos at = info.pos();
+            if (at.getY() != bottom || (box != null && !box.isInside(at))) continue;
+            BlockState state = info.state();
+            if (state.isAir() || (bottom != padY && isCover(state))) continue;
+            tops.add(info);
+        }
+        return tops;
     }
 
     @Override
@@ -204,15 +249,14 @@ public final class LostCityGroundProcessor extends StructureProcessor {
                                                                          StructurePlaceSettings settings) {
         int padY = offset.getY();   // rotation and mirroring keep Y, so the template's y=0 lands here
         BoundingBox box = settings.getBoundingBox();
+        int floorY = box != null ? box.minY() : level.getMinBuildHeight();
         List<StructureTemplate.StructureBlockInfo> footing = null;
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
-        for (StructureTemplate.StructureBlockInfo info : processed) {
+        for (StructureTemplate.StructureBlockInfo info : footingTops(processed, padY, box)) {
             BlockPos at = info.pos();
-            if (at.getY() != padY || (box != null && !box.isInside(at))) continue;
-            int room = box != null ? at.getY() - box.minY() : FOOTING_MAX_DEPTH;
+            int room = at.getY() - floorY;
             if (room <= 0) continue;
-            int depth = footingDepth(info.state(), d -> d > room ? Blocks.STONE.defaultBlockState()
-                    : level.getBlockState(cursor.set(at.getX(), at.getY() - d, at.getZ())));
+            int depth = footingDepth(info.state(), room, d -> level.getBlockState(cursor.set(at.getX(), at.getY() - d, at.getZ())));
             if (depth == 0) continue;
             if (footing == null) footing = new ArrayList<>();
             BlockState block = footingFor(info.state());

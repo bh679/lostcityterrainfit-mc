@@ -5,6 +5,7 @@ import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.StructureManager;
+import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.StructurePiece;
 import net.minecraft.world.level.levelgen.structure.StructureStart;
 
@@ -13,7 +14,7 @@ import java.util.List;
 /**
  * Where two Lost City buildings stand on the same ground.
  *
- * <p>Nothing stops Big Lost City footprints overlapping — its own sets, this mod's all-biome copies and
+ * <p>Nothing stops Lost City footprints overlapping — its own sets, this mod's all-biome copies and
  * other mods' copies all place on their own grids. Every structure start is registered before any piece
  * places, so during placement the chunk's structure references name every Lost City piece whose box
  * reaches a position — the piece being placed among them. A position inside {@link #MIN_PIECES} or more
@@ -43,14 +44,23 @@ public final class LostCityOverlap {
         return piecesContaining(starts, at) >= MIN_PIECES;
     }
 
-    /** How many pieces of {@code starts} have a bounding box containing {@code at}. */
+    /**
+     * How many pieces of {@code starts} reach {@code at}: a piece's box, and every height under it, where its
+     * footings run ({@link LostCityGroundProcessor}), so a later building's air never cuts another's footing.
+     */
     static int piecesContaining(List<StructureStart> starts, BlockPos at) {
         int count = 0;
         for (StructureStart start : starts) {
             for (StructurePiece piece : start.getPieces()) {
-                if (piece.getBoundingBox().isInside(at)) count++;
+                if (reaches(piece.getBoundingBox(), at)) count++;
             }
         }
         return count;
+    }
+
+    /** Whether {@code at} is inside {@code box} or anywhere under it. */
+    static boolean reaches(BoundingBox box, BlockPos at) {
+        return at.getX() >= box.minX() && at.getX() <= box.maxX() && at.getZ() >= box.minZ() && at.getZ() <= box.maxZ()
+                && at.getY() <= box.maxY();
     }
 }
