@@ -1,11 +1,15 @@
 package games.brennan.lostcityterrainfit;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.levelgen.structure.BoundingBox;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.function.IntFunction;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -134,28 +138,86 @@ final class LostCityGroundProcessorTest {
     }
 
     @Test
-    @DisplayName("footing runs from a hanging pad down to the ground, capped, and never under grounded pads")
+    @DisplayName("footing runs from a hanging pad all the way to the ground, and never under grounded pads")
     void footing() {
         BlockState moss = Blocks.MOSS_BLOCK.defaultBlockState();
         BlockState road = Blocks.COBBLESTONE.defaultBlockState();
+        int room = 300;
         // below.apply(1) is the block right under the pad
         IntFunction<BlockState> grounded = d -> STONE;
         IntFunction<BlockState> dip = d -> d <= 5 ? AIR : STONE;
+        IntFunction<BlockState> deepSea = d -> d <= 70 ? Blocks.WATER.defaultBlockState() : STONE;
         IntFunction<BlockState> chasm = d -> AIR;
-        assertEquals(0, LostCityGroundProcessor.footingDepth(moss, grounded));
-        assertEquals(5, LostCityGroundProcessor.footingDepth(moss, dip));
-        assertEquals(5, LostCityGroundProcessor.footingDepth(road, dip));
-        assertEquals(LostCityGroundProcessor.FOOTING_MAX_DEPTH, LostCityGroundProcessor.footingDepth(road, chasm));
-        assertEquals(0, LostCityGroundProcessor.footingDepth(AIR, chasm));          // an air pad cell gets nothing
-        assertEquals(5, LostCityGroundProcessor.footingDepth(moss, d -> d <= 5 ? Blocks.WATER.defaultBlockState() : STONE));
+        assertEquals(0, LostCityGroundProcessor.footingDepth(moss, room, grounded));
+        assertEquals(5, LostCityGroundProcessor.footingDepth(moss, room, dip));
+        assertEquals(5, LostCityGroundProcessor.footingDepth(road, room, dip));
+        assertEquals(70, LostCityGroundProcessor.footingDepth(road, room, deepSea));   // no depth limit
+        assertEquals(room, LostCityGroundProcessor.footingDepth(road, room, chasm));   // stops at the world's floor
+        assertEquals(0, LostCityGroundProcessor.footingDepth(AIR, room, chasm));       // an air cell gets nothing
         assertEquals(Blocks.DIRT, LostCityGroundProcessor.footingFor(moss).getBlock());
         assertEquals(Blocks.STONE, LostCityGroundProcessor.footingFor(road).getBlock());
     }
 
+    private static StructureTemplate.StructureBlockInfo placed(int x, int y, int z, BlockState state) {
+        return new StructureTemplate.StructureBlockInfo(new BlockPos(x, y, z), state, null);
+    }
+
     @Test
-    @DisplayName("attached to Big Lost City templates only")
+    @DisplayName("footings hang from the bottom layer only: a ruin's overhang never grows a wall to the ground")
+    void footingTops() {
+        BlockState wall = Blocks.STONE_BRICKS.defaultBlockState();
+        BlockState puddle = Blocks.WATER.defaultBlockState();
+        BlockState weed = Blocks.SHORT_GRASS.defaultBlockState();
+        BoundingBox box = new BoundingBox(0, -64, 0, 15, 319, 15);
+        List<StructureTemplate.StructureBlockInfo> padded = List.of(
+                placed(0, 10, 0, wall), placed(0, 12, 0, wall),    // the pad, and the wall above it
+                placed(1, 10, 0, puddle),                          // a pad puddle counts
+                placed(2, 10, 0, AIR), placed(2, 30, 0, wall),     // an overhang past the pad: no footing
+                placed(20, 10, 0, wall));                          // outside the chunk
+        assertEquals(10, LostCityGroundProcessor.bottomLayer(padded, 10));
+        assertEquals(java.util.Set.of(0, 1), columns(LostCityGroundProcessor.footingTops(padded, 10, box)));
+
+        List<StructureTemplate.StructureBlockInfo> padless = List.of(
+                placed(0, 10, 0, AIR), placed(0, 11, 0, weed),     // a weed is not what the building stands on
+                placed(1, 12, 0, wall), placed(2, 12, 0, wall), placed(3, 20, 0, wall));
+        assertEquals(12, LostCityGroundProcessor.bottomLayer(padless, 10));
+        assertEquals(java.util.Set.of(1, 2), columns(LostCityGroundProcessor.footingTops(padless, 10, box)));
+
+        assertEquals(10, LostCityGroundProcessor.bottomLayer(List.of(placed(0, 10, 0, AIR)), 10));   // nothing solid
+    }
+
+    private static java.util.Set<Integer> columns(List<StructureTemplate.StructureBlockInfo> blocks) {
+        java.util.Set<Integer> out = new java.util.HashSet<>();
+        for (StructureTemplate.StructureBlockInfo info : blocks) out.add(info.pos().getX());
+        return out;
+    }
+
+    @Test
+    @DisplayName("a piece reaches its box and the heights under it, where its footings run, not above or beside it")
+    void reachesFootings() {
+        BoundingBox box = new BoundingBox(0, 40, 0, 10, 60, 10);
+        assertTrue(LostCityOverlap.reaches(box, new BlockPos(5, 50, 5)));
+        assertTrue(LostCityOverlap.reaches(box, new BlockPos(5, 12, 5)));
+        assertFalse(LostCityOverlap.reaches(box, new BlockPos(5, 61, 5)));
+        assertFalse(LostCityOverlap.reaches(box, new BlockPos(11, 12, 5)));
+    }
+
+    @Test
+    @DisplayName("a pad's air yields to the world's water, and still carves ground")
+    void padAirYieldsToWater() {
+        assertTrue(LostCityGroundProcessor.yields(AIR, 0, column(Blocks.WATER.defaultBlockState())));
+        assertFalse(LostCityGroundProcessor.yields(AIR, 0, column(STONE)));
+        assertFalse(LostCityGroundProcessor.yields(AIR, 0, column(AIR)));
+    }
+
+    @Test
+    @DisplayName("attached to Big Lost City's templates and Dungeon Train's own Lost City buildings only")
     void appliesTo() {
         assertTrue(LostCityGroundProcessor.appliesTo(ResourceLocation.fromNamespaceAndPath("big_lost_city", "house1lt")));
+        assertTrue(LostCityGroundProcessor.appliesTo(ResourceLocation.fromNamespaceAndPath("dungeontrain", "lost_city/office_tower")));
+        assertTrue(LostCityGroundProcessor.appliesTo(ResourceLocation.fromNamespaceAndPath("dungeontrain", "building_slot")));
+        assertFalse(LostCityGroundProcessor.appliesTo(ResourceLocation.fromNamespaceAndPath("dungeontrain", "carriage/flat")));
+        assertFalse(LostCityGroundProcessor.appliesTo(ResourceLocation.fromNamespaceAndPath("minecraft", "lost_city/office_tower")));
         assertFalse(LostCityGroundProcessor.appliesTo(ResourceLocation.fromNamespaceAndPath("minecraft", "village/plains/houses/plains_small_house_1")));
         assertFalse(LostCityGroundProcessor.appliesTo(null));
     }

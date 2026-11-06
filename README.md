@@ -16,7 +16,8 @@ look pasted on.
   ground up beneath the pad instead, and nothing above the pad is removed.
 - **Ground runs through the ruins.** The pad's natural blocks give way to the biome's own surface.
   Hills climb over the outer rooms, the sea floods buildings that stand in it, and stone or dirt
-  footings prop up any pad left hanging on the downhill side.
+  footings run all the way to the ground under any pad left hanging, so no building's base stands
+  over air or water.
 - **All-biome buildings (optional).** Copies of the big buildings (skyscrapers, power plant, houses,
   store, warehouse, ferris wheel) can start in every overworld biome, oceans included. Big Lost City
   only lets them start in plains.
