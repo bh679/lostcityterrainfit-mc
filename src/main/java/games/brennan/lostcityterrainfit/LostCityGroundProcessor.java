@@ -2,6 +2,8 @@ package games.brennan.lostcityterrainfit;
 
 import com.mojang.serialization.MapCodec;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.EmptyBlockGetter;
 import net.minecraft.world.level.LevelReader;
@@ -10,7 +12,9 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.BushBlock;
 import net.minecraft.world.level.block.CarpetBlock;
+import net.minecraft.world.level.block.DoorBlock;
 import net.minecraft.world.level.block.LeavesBlock;
+import net.minecraft.world.level.block.LiquidBlockContainer;
 import net.minecraft.world.level.block.VineBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.Fluids;
@@ -25,6 +29,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.function.IntFunction;
+import java.util.function.Predicate;
 
 /**
  * Lets the Lost City's buildings sit in the world's own ground instead of on their template's pad.
@@ -50,6 +55,10 @@ import java.util.function.IntFunction;
  *   ({@link LostCityOverlap}), the air above the pad also yields to any solid block already there, so two
  *   buildings that start over each other meld into the union of their walls and floors rather than the
  *   later one carving its rooms through the first.</li>
+ *   <li><b>Washed away</b> — a decoration above the pad that the world's water would wash off once it
+ *   reaches it (cobwebs, cave vines, buttons, flower pots, carpets: {@link #washesAway}), standing in that
+ *   water or beside it, yields to the world. Placed, it would break the moment the water flowed in and drop
+ *   as an item, and a flooded skyscraper spilled hundreds of them into the sea each time it generated.</li>
  *   <li><b>Structure</b> — everything else (roads, pavements, walls, floors, props, and natural blocks above
  *   the pad such as planters) is placed as the template says.</li>
  * </ul>
@@ -134,6 +143,39 @@ public final class LostCityGroundProcessor extends StructureProcessor {
         return state.getFluidState().isSourceOfType(Fluids.WATER);
     }
 
+    /** The cells water reaches a block from: above it and the four beside it (it never flows up). */
+    static final Direction[] WATER_REACHES_FROM = {
+            Direction.UP, Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST};
+
+    /**
+     * Whether flowing water would wash this block away and drop it as an item: vanilla's
+     * {@code FlowingFluid#canHoldFluid} for water, for a block that holds no water itself. Doors, signs,
+     * ladders, sugar cane, bubble columns, portals and structure voids hold firm, as does anything that
+     * blocks motion; a block that can take water in ({@link LiquidBlockContainer}) is waterlogged, not broken.
+     */
+    static boolean washesAway(BlockState state) {
+        if (state.isAir() || !state.getFluidState().isEmpty()) return false;
+        Block block = state.getBlock();
+        if (block instanceof LiquidBlockContainer || block instanceof DoorBlock) return false;
+        if (state.is(BlockTags.SIGNS) || state.is(Blocks.LADDER) || state.is(Blocks.SUGAR_CANE)
+                || state.is(Blocks.BUBBLE_COLUMN) || state.is(Blocks.NETHER_PORTAL) || state.is(Blocks.END_PORTAL)
+                || state.is(Blocks.END_GATEWAY) || state.is(Blocks.STRUCTURE_VOID)) return false;
+        return !state.blocksMotion();
+    }
+
+    /**
+     * Whether a template block above the pad yields to the world's water: it would wash away
+     * ({@link #washesAway}) and the world holds still water where it stands or where water reaches it from.
+     */
+    static boolean yieldsToWater(BlockState template, BlockState here, Predicate<Direction> waterFrom) {
+        if (!washesAway(template)) return false;
+        if (isWater(here)) return true;
+        for (Direction from : WATER_REACHES_FROM) {
+            if (waterFrom.test(from)) return true;
+        }
+        return false;
+    }
+
     /** Whether the world holds a block here that a building's air could erase: not air, not a fluid, not replaceable. */
     static boolean isSolidBlock(BlockState state) {
         return !state.isAir() && state.getFluidState().isEmpty() && !state.canBeReplaced();
@@ -176,6 +218,19 @@ public final class LostCityGroundProcessor extends StructureProcessor {
         if (target == null) return null;
         int localY = original.pos().getY();
         BlockState state = target.state();
+        if (localY > 0 && washesAway(state)) {
+            BoundingBox box = settings.getBoundingBox();
+            BlockPos at = target.pos();
+            if (box == null || box.isInside(at)) {
+                BlockPos.MutableBlockPos near = new BlockPos.MutableBlockPos();
+                // never read outside the region: a neighbour past the box edge counts as dry
+                Predicate<Direction> waterFrom = d -> {
+                    near.setWithOffset(at, d);
+                    return (box == null || box.isInside(near)) && isWater(world.getBlockState(near));
+                };
+                if (yieldsToWater(state, world.getBlockState(at), waterFrom)) return null;
+            }
+        }
         if (localY == 0 ? !isBase(state) && !state.isAir() : !state.isAir() && !isCover(state)) return target;
         BoundingBox box = settings.getBoundingBox();
         BlockPos at = target.pos();
