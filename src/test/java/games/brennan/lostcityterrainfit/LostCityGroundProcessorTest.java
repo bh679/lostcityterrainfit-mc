@@ -1,6 +1,7 @@
 package games.brennan.lostcityterrainfit;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.function.IntFunction;
+import java.util.function.Predicate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -220,5 +222,40 @@ final class LostCityGroundProcessorTest {
         assertFalse(LostCityGroundProcessor.appliesTo(ResourceLocation.fromNamespaceAndPath("minecraft", "lost_city/office_tower")));
         assertFalse(LostCityGroundProcessor.appliesTo(ResourceLocation.fromNamespaceAndPath("minecraft", "village/plains/houses/plains_small_house_1")));
         assertFalse(LostCityGroundProcessor.appliesTo(null));
+    }
+
+    private static final BlockState WATER = Blocks.WATER.defaultBlockState();
+    private static final Predicate<Direction> DRY = d -> false;
+
+    @Test
+    @DisplayName("decorations water would wash off are recognised by vanilla's own test")
+    void washesAway() {
+        for (BlockState s : new BlockState[]{Blocks.COBWEB.defaultBlockState(), Blocks.CAVE_VINES.defaultBlockState(),
+                Blocks.CAVE_VINES_PLANT.defaultBlockState(), Blocks.POLISHED_BLACKSTONE_BUTTON.defaultBlockState(),
+                Blocks.FLOWER_POT.defaultBlockState(), Blocks.MOSS_CARPET.defaultBlockState(), Blocks.END_ROD.defaultBlockState(),
+                Blocks.TRIPWIRE.defaultBlockState(), Blocks.TRIPWIRE_HOOK.defaultBlockState(), Blocks.LEVER.defaultBlockState(),
+                Blocks.AZALEA.defaultBlockState(), Blocks.TORCH.defaultBlockState(), Blocks.REDSTONE_WIRE.defaultBlockState()}) {
+            assertTrue(LostCityGroundProcessor.washesAway(s), s.toString());
+        }
+        for (BlockState s : new BlockState[]{AIR, WATER, STONE, Blocks.GLASS.defaultBlockState(),
+                Blocks.OAK_DOOR.defaultBlockState(), Blocks.LADDER.defaultBlockState(), Blocks.OAK_SIGN.defaultBlockState(),
+                Blocks.OAK_SLAB.defaultBlockState(), Blocks.CHAIN.defaultBlockState(), Blocks.IRON_BARS.defaultBlockState(),
+                Blocks.SEAGRASS.defaultBlockState(), Blocks.SUGAR_CANE.defaultBlockState()}) {
+            assertFalse(LostCityGroundProcessor.washesAway(s), s.toString());
+        }
+    }
+
+    @Test
+    @DisplayName("a decoration water would wash off yields where the water stands or reaches it from")
+    void yieldsToWater() {
+        BlockState web = Blocks.COBWEB.defaultBlockState();
+        assertTrue(LostCityGroundProcessor.yieldsToWater(web, WATER, DRY), "in the water");
+        assertTrue(LostCityGroundProcessor.yieldsToWater(web, AIR, d -> d == Direction.UP), "water above");
+        assertTrue(LostCityGroundProcessor.yieldsToWater(web, AIR, d -> d == Direction.EAST), "water beside");
+        assertFalse(LostCityGroundProcessor.yieldsToWater(web, AIR, d -> d == Direction.DOWN), "water never flows up");
+        assertFalse(LostCityGroundProcessor.yieldsToWater(web, AIR, DRY), "dry room keeps its cobwebs");
+        assertFalse(LostCityGroundProcessor.yieldsToWater(STONE, WATER, d -> true), "walls stay in the water");
+        assertFalse(LostCityGroundProcessor.yieldsToWater(Blocks.OAK_SLAB.defaultBlockState(), WATER, d -> true),
+                "a waterloggable block is waterlogged, not washed away");
     }
 }
